@@ -7,6 +7,7 @@ import sc3nb as scn
 from osc import OSC
 import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.use('tkagg')
 
 
 def get_arguments():
@@ -22,9 +23,8 @@ def get_arguments():
     return args
 
 
-def compute_distance(xref, yref, xpoint, ypoint):
-
-    dist = (xpoint-xref) ** 2 + (ypoint-yref) ** 2
+def compute_distance(xref, yref, x, y):
+    dist = (x-xref) ** 2 + (y-yref) ** 2
 
     return dist
 
@@ -32,29 +32,29 @@ def compute_distance(xref, yref, xpoint, ypoint):
 def main():
     xs = []
     ys = []
-
     axes = plt.gca()
-    axes.set_xlim(550, 750)
-    axes.set_ylim(300, 500)
-    #line, = axes.plot(xs, ys, 'r-')
-
     args = get_arguments()
     source = args['source'].upper()
+    plt.get_current_fig_manager().window.wm_geometry("+2000+500")
 
     if source == 'WEBCAM':
-        cap = cv2.VideoCapture(0)
-        frame_rate = 1
+        cap = cv2.VideoCapture(1)
+        axes.set_xlim(0, 1200)
+        axes.set_ylim(1000, 100)
+        thr_radius = 50
     elif source == 'FILE':
         cap = cv2.VideoCapture('Video1.avi')
-        frame_rate = 25
+        axes.set_xlim(550, 750)
+        axes.set_ylim(350, 500)
+        thr_radius = 15
     else:
         cap = 'no source'
-        frame_rate = None
+        xs = ys = None
+        thr_radius = None
         print(cap)
 
     counter = 0
     t_0 = 0.0
-    thr_radius = 15
 
     while cap.isOpened():
         t_1 = int(round(time.time() * 1000))
@@ -69,8 +69,6 @@ def main():
 
             frame_to_thresh = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-        #v1_min, v2_min, v3_min, v1_max, v2_max, v3_max = get_trackbar_values(range_filter)
-
         h1_min, h2_min, h1_max, h2_max, s_min, s_max, v_min, v_max = (0, 170, 10, 180, 70, 255, 50, 255)
 
         #thresh_low = cv2.inRange(frame_to_thresh, (h1_min, s_min, v_min), (h1_max, s_max, v_max))
@@ -84,7 +82,6 @@ def main():
         # find contours in the mask and initialize the current
         # (x, y) center of the ball
         cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]
-        center = None
 
         # only proceed if at least one contour was found
         if len(cnts) > 0:
@@ -102,7 +99,8 @@ def main():
                 # then update the list of tracked points
                 cv2.circle(image, (int(x), int(y)), int(radius), (0, 255, 255), 2)
                 cv2.circle(image, center, 3, (0, 0, 255), -1)
-                cv2.putText(image, "centroid", (center[0] + 10, center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
+                cv2.putText(image, "centroid", (center[0] + 10, center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255),
+                            1)
                 cv2.putText(image, "(" + str(center[0]) + "," + str(center[1]) + ")", (center[0] + 10, center[1] + 15),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
 
@@ -110,36 +108,32 @@ def main():
                 ys.append(y)
 
                 xref, yref = (xs[0], ys[0])
-                xpoint, ypoint = (xs[-1], ys[-1])
-
-                #line.set_xdata(xs)
-                #line.set_ydata(ys)
 
                 circle = plt.Circle((xref, yref), thr_radius, color='g', fill=False)
                 axes.add_artist(circle)
 
-                if counter % 10 == 0:
+                if counter % 25 == 0:
                     plt.draw()
-                    plt.scatter(xs, ys, c='r', s=1)
-                    plt.pause(1e-17)
+                    plt.scatter(x, y, c='r', s=1)
                     plt.scatter(xs[0], ys[0], c='b', s=15)
+                    plt.pause(1e-17)
+                    # time.sleep(0.1)
 
-                    time.sleep(0.1)
-
-                distance = math.sqrt(compute_distance(xref, yref, xpoint, ypoint))
+                distance = math.sqrt(compute_distance(xref, yref, x, y))
                 if distance >= thr_radius:
                     print('         distance: ' + str(int(distance)))
 
+                    # Sonification
                     freq = distance*10 + 200
                     amp = distance/1000
-                    amp = np.clip(amp, 0.1, 0.8)
+                    amp = np.clip(amp, 0.1, 0.9)
                     sc.msg("/s_new", ["s1", -1, 1, 0, "freq", freq, "amp", amp, "dur", 0.5, "num", 1])
 
             # show the frame to our screen
             cv2.imshow("Original", image)
-        counter += 1
-        time.sleep(0)
-        if cv2.waitKey(frame_rate) & 0xFF is ord('q'):
+            cv2.moveWindow("Original", 0, 0)
+
+        if cv2.waitKey(1) | 0xFF is ord('q'):
             break
 
 
